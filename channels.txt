@@ -1,15 +1,16 @@
 {
-  "name": "versaria-app",
-  "version": "1.0.0",
-  "description": "Parser and Bot",
-  "main": "bot.js",
-  "scripts": {
-    "start": "node bot.js"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
-    "input": "^1.0.1",
-    "node-telegram-bot-api": "^0.64.0",
-    "telegram": "^2.19.10"
-  }
-}
+@LOTRAN_UKRAINE
+@mana_shopua
+https://t.me/modnicaukraine20
+https://t.me/majorka_7km
+https://t.me/+nS9Z3yRfqFc4ZDAy
+https://t.me/Nm7ffrGeNAlmMGIy
+https://t.me/mihailenkon
+https://t.me/SmirnovaShoping
+https://t.me/avdeevasvet
+https://t.me/yanochkasemerenko
+https://t.me/N_K_Odessa
+https://t.me/oksamyt7km
+https://t.me/vojelavi_opt
+https://t.me/ElenaRoshior
+https://t.me/odessafashion_official
