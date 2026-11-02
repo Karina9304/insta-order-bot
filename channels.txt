@@ -1,0 +1,15 @@
+{
+  "name": "versaria-app",
+  "version": "1.0.0",
+  "description": "Parser and Bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "input": "^1.0.1",
+    "node-telegram-bot-api": "^0.64.0",
+    "telegram": "^2.19.10"
+  }
+}
