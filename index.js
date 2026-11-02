@@ -9,7 +9,6 @@ const supabaseUrl = 'https://wjrnzvqfxgmlppdzidtf.supabase.co';
 const supabaseKey = 'sb_publishable_WYXYrZAVnjNFUQXh8hwqvA_yE-4TLB9';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Берем сессию из переменной окружения
 const stringSession = new StringSession(process.env.TELEGRAM_SESSION || ""); 
 
 async function startParsing() {
@@ -32,7 +31,8 @@ async function startParsing() {
     for (const channel of channels) {
         console.log(`Читаем канал: ${channel}`);
         try {
-            const messages = await client.getMessages(channel, { limit: 10 });
+            // БЕРЕМ 50 ПОСТОВ ВМЕСТО 10
+            const messages = await client.getMessages(channel, { limit: 50 });
             for (const msg of messages) {
                 if (!msg.text) continue;
                 
@@ -47,8 +47,7 @@ async function startParsing() {
                 
                 const { data: existing } = await supabase.from('products').select('id').eq('link', link);
                 if (existing && existing.length > 0) {
-                    console.log(`Уже есть в базе: ${article}`);
-                    continue;
+                    continue; // Пропускаем без вывода в консоль, чтобы не засорять логи
                 }
 
                 const { error } = await supabase.from('products').insert([{
@@ -68,6 +67,7 @@ async function startParsing() {
         } catch (err) {
             console.log(`Ошибка доступа к каналу ${channel}`);
         }
+        // Пауза 5 секунд перед следующим каналом
         await new Promise(r => setTimeout(r, 5000)); 
     }
 
