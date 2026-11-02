@@ -40,7 +40,9 @@ bot.onText(/\/update/, (msg) => {
 // Обработка поиска по артикулу
 bot.on('message', async (msg) => {
     const text = msg.text;
-    if (!text || text.startsWith('/')) return; // Игнорируем команды
+    
+    // Если это команда (начинается с /), игнорируем её в этом обработчике!
+    if (!text || text.startsWith('/')) return; 
 
     const match = text.match(/\d+/);
     if (!match) {
