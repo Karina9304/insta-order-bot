@@ -31,43 +31,57 @@ async function startParsing() {
     for (const channel of channels) {
         console.log(`Читаем канал: ${channel}`);
         try {
-            // БЕРЕМ 50 ПОСТОВ ВМЕСТО 10
-            const messages = await client.getMessages(channel, { limit: 50 });
+            // Увеличиваем лимит до 100 (максимум для одного запроса API)
+            const messages = await client.getMessages(channel, { limit: 100 });
+            
             for (const msg of messages) {
                 if (!msg.text) continue;
                 
-                const articleMatch = msg.text.match(/(?:Артикул|Арт|Код|Модель|Мод|В|#)[\s:]*([A-Za-z0-9\/\-]+)/i);
+                // Улучшенный поиск артикула (добавили "Номер" и точку)
+                const articleMatch = msg.text.match(/(?:Артикул|Арт|Код|Модель|Мод|В|#|Номер)[\s:\.]*([A-Za-z0-9\/\-]+)/i);
                 if (!articleMatch) continue;
                 const article = articleMatch[1];
+
+                // Если артикул пустой или это просто дефис - пропускаем
+                if (article === '-' || article === '') continue;
 
                 const priceMatch = msg.text.match(/(\d+[\s\d]*)\s*(грн|гр|₴|uah|\$|usd|дол)/i);
                 const price = priceMatch ? priceMatch[1].trim() + (priceMatch[2].includes('$') || priceMatch[2].toLowerCase() === 'usd' || priceMatch[2].toLowerCase().includes('дол') ? '$' : ' грн') : 'Не указана';
 
-                const link = `https://t.me/${channel.replace('@','')}/${msg.id}`;
+                // ПРАВИЛЬНОЕ формирование ссылки
+                let cleanChannel = channel.replace('https://t.me/', '').replace('@', '');
+                let link = msg.chat.username ? `https://t.me/${msg.chat.username}/${msg.id}` : `https://t.me/c/${msg.chat.id.toString().replace('-100', '')}/${msg.id}`;
                 
-                const { data: existing } = await supabase.from('products').select('id').eq('link', link);
+                // Получаем нормальное имя канала
+                const channelName = msg.chat.title || cleanChannel;
+
+                // ПРОВЕРКА ДУБЛИКАТОВ: ищем по артикулу И названию канала
+                const { data: existing } = await supabase.from('products').select('id')
+                    .eq('article', article)
+                    .eq('channel_name', channelName);
+
                 if (existing && existing.length > 0) {
-                    continue; // Пропускаем без вывода в консоль, чтобы не засорять логи
+                    continue; // Уже есть такой товар в этом канале - пропускаем
                 }
 
                 const { error } = await supabase.from('products').insert([{
                     article,
                     price,
-                    address: 'См. канал',
+                    address: channelName, // Берем адрес из названия канала
                     link,
-                    channel_name: channel
+                    channel_name: channelName
                 }]);
 
                 if (error) {
-                    console.error(`Ошибка сохранения артикула ${article}:`, error.message);
+                    console.error(`Ошибка сохранения ${article}:`, error.message);
                 } else {
-                    console.log(`Сохранено в базу: ${article} | ${price}`);
+                    console.log(`Сохранено: ${article} | ${price} | ${channelName}`);
                 }
             }
         } catch (err) {
             console.log(`Ошибка доступа к каналу ${channel}`);
         }
-        // Пауза 5 секунд перед следующим каналом
+        // Пауза 5 секунд
         await new Promise(r => setTimeout(r, 5000)); 
     }
 
