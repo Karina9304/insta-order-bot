@@ -3,7 +3,6 @@ const { StringSession } = require("telegram/sessions");
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const OpenAI = require('openai');
-const { Api } = require("telegram"); // Добавили для чтения описания канала
 
 const apiId = 34226265; 
 const apiHash = "77ca868d4f2d9d886361b19a56ab57f4"; 
@@ -18,118 +17,98 @@ const openai = new OpenAI({
 
 const stringSession = new StringSession(process.env.TELEGRAM_SESSION || ""); 
 
-// Обновленная функция работы с ИИ
 async function extractWithAI(postText, channelDescription) {
     try {
         const completion = await openai.chat.completions.create({
             messages: [
                 { 
                     role: "system", 
-                    content: `Ты умный парсер товаров. Твоя задача — извлечь артикул, цену и адрес.
-                    
-                    ВАЖНО:
-                    1. Артикул ищи в ТЕКСТЕ поста. Производители пишут по-разному: "Артикул", "Арт", "Мод", "Модель", "#", просто цифры или буквы с цифрами. Игнорируй размеры (S, M, L, 42, 44) и объемы. 
-                    2. Цену ищи в ТЕКСТЕ поста. Если несколько цен — бери минимальную.
-                    3. Адрес ищи в ОПИСАНИИ КАНАЛА (например, "7 км", "Голуба 2054", "Ряд 5, место 10"). Если в описании нет, посмотри в тексте поста. Если нигде нет — напиши "Не указан".
-                    
-                    Верни ТОЛЬКО JSON строго в формате: {"article": "...", "price": "...", "address": "..."}` 
+                    content: `Ты — эксперт-детектив по парсингу Telegram-каналов с женской одеждой. Твоя задача — найти в тексте АРТИКУЛ (модель, номер) и ЦЕНУ.
+
+ПРАВИЛА ПОИСКА АРТИКУЛА:
+1.  **Ключевые слова:** Ищи цифры (и иногда буквы) после слов: «Артикул», «Арт», «Мод», «Модель», «Код», «Номер», «В», «#».
+2.  **Решетка (#):** Если видишь «#123» или «# 123» — артикул «123».
+3.  **Без слов:** Если в начале поста или рядом с названием товара стоит просто набор цифр (например, «Платье 4567»), считай это артикулом.
+4.  **Формат:** Артикул может содержать цифры и английские буквы (например, «A-123»). Не бери размеры (S, M, L, 42, 44) и объемы (ОГ, ОТ, ОС).
+
+ПРАВИЛА ПОИСКА ЦЕНЫ:
+1.  Ищи число рядом с символами валют: «грн», «гр», «₴», «$», «usd», «дол».
+2.  Если цен несколько (опт/розница), бери ту, что явно указана как цена товара.
+
+ПРИМЕРЫ:
+- Текст: "Платье вечернее. Мод. 1234. Цена 1500 грн" -> {"article": "1234", "price": "1500 грн"}
+- Текст: "Костюм спортивный #5678. 25$" -> {"article": "5678", "price": "25$"}
+- Текст: "Новая коллекция. Джемпер 890. Размеры 42-44. 800 грн" -> {"article": "890", "price": "800 грн"}
+
+Верни ТОЛЬКО JSON строго в формате: {"article": "...", "price": "...", "address": "..."}. Если артикула нет — верни пустую строку.` 
                 },
-                { 
-                    role: "user", 
-                    content: `ОПИСАНИЕ КАНАЛА:\n${channelDescription}\n\nТЕКСТ ПОСТА:\n${postText}` 
-                }
+                { role: "user", content: `ОПИСАНИЕ КАНАЛА:\n${channelDescription}\n\nТЕКСТ ПОСТА:\n${postText}` }
             ],
             model: "deepseek-chat",
             response_format: { type: "json_object" }
         });
         return JSON.parse(completion.choices[0].message.content);
     } catch (error) {
-        console.error("Ошибка DeepSeek:", error.message);
         return null;
     }
 }
 
 async function startParsing() {
-    console.log("Подключение к Telegram...");
-    const client = new TelegramClient(stringSession, apiId, apiHash, {
-        connectionRetries: 5,
-    });
-
+    const client = new TelegramClient(stringSession, apiId, apiHash, { connectionRetries: 5 });
     await client.connect();
     console.log("✅ Подключились! Начинаем умный сбор...");
 
     let channels = [];
     try {
         channels = fs.readFileSync('channels.txt', 'utf8').split('\n').map(c => c.trim()).filter(c => c);
-    } catch (err) {
-        console.error("Ошибка чтения channels.txt:", err.message);
-        process.exit(1);
-    }
+    } catch (err) { process.exit(1); }
 
     for (const channel of channels) {
         let cleanChannel = channel.replace('https://t.me/', '').replace('@', '');
         console.log(`Читаем канал: ${cleanChannel}`);
         
-        let channelAbout = ""; // Здесь будет храниться описание канала
+        let channelAbout = ""; 
         let channelTitle = cleanChannel;
 
         try {
-            // Получаем полную информацию о канале (включая описание)
             const fullChannel = await client.invoke(new Api.channels.GetFullChannel({ channel: channel }));
             channelAbout = fullChannel.fullChat.about || "";
             channelTitle = fullChannel.chats[0].title || cleanChannel;
             
-            const messages = await client.getMessages(channel, { limit: 100 });
+            const messages = await client.getMessages(channel, { limit: 50 });
             
             for (const msg of messages) {
                 if (!msg.text || msg.text.length < 15) continue; 
                 
-                // Передаем ИИ и текст поста, и описание канала
                 const extractedData = await extractWithAI(msg.text, channelAbout);
                 
                 if (!extractedData || !extractedData.article) continue; 
                 
                 const article = extractedData.article.toString().trim();
-                if (article === '-' || article === '' || article.length > 15) continue; // Защита от мусора
+                if (article === '-' || article === '' || article.length > 15) continue;
 
                 const price = extractedData.price || 'Не указана';
-                const address = extractedData.address || channelTitle; // Если ИИ не нашел, берем название
-
+                const address = extractedData.address || channelTitle;
                 const link = `https://t.me/${cleanChannel}/${msg.id}`;
 
-                // Проверка дублей
-                const { data: existing } = await supabase.from('products').select('id')
-                    .eq('article', article)
-                    .eq('channel_name', channelTitle);
-
-                if (existing && existing.length > 0) {
-                    continue; 
-                }
+                const { data: existing } = await supabase.from('products').select('id').eq('link', link);
+                if (existing && existing.length > 0) continue; 
 
                 const { error } = await supabase.from('products').insert([{
-                    article,
-                    price,
-                    address,
-                    link,
-                    channel_name: channelTitle
+                    article, price, address, link, channel_name: channelTitle
                 }]);
 
-                if (error) {
-                    console.error(`Ошибка сохранения ${article}:`, error.message);
-                } else {
-                    console.log(`Сохранено: ${article} | ${price} | ${address} | ${channelTitle}`);
+                if (!error) {
+                    console.log(`Сохранено: ${article} | ${price} | ${address}`);
                 }
-                
-                await new Promise(r => setTimeout(r, 1000)); // Пауза для ИИ
+                await new Promise(r => setTimeout(r, 1000)); 
             }
         } catch (err) {
-            console.log(`Ошибка доступа к каналу ${cleanChannel}:`, err.message);
+            console.log(`Ошибка доступа к каналу ${cleanChannel}`);
         }
         await new Promise(r => setTimeout(r, 3000)); 
     }
-
     await client.disconnect();
     process.exit(0);
 }
-
 startParsing();
