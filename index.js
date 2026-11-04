@@ -57,7 +57,7 @@ async function extractWithAI(postText, channelDescription) {
 async function startParsing() {
     const client = new TelegramClient(stringSession, apiId, apiHash, { connectionRetries: 5 });
     await client.connect();
-    console.log("✅ Подключились! Начинаем глубокий сбор...");
+    console.log("✅ Подключились! Начинаем умный сбор...");
 
     let channels = [];
     try {
@@ -72,17 +72,23 @@ async function startParsing() {
         let channelTitle = cleanChannel;
 
         try {
-            const fullChannel = await client.invoke(new Api.channels.GetFullChannel({ channel: channel }));
+            // Пытаемся получить данные канала
+            let fullChannel;
+            if (channel.includes('+')) {
+                // Если это приватная ссылка-приглашение
+                fullChannel = await client.invoke(new Api.channels.GetFullChannel({ channel: channel }));
+            } else {
+                fullChannel = await client.invoke(new Api.channels.GetFullChannel({ channel: cleanChannel }));
+            }
+            
             channelAbout = fullChannel.fullChat.about || "";
             channelTitle = fullChannel.chats[0].title || cleanChannel;
             
-            // УВЕЛИЧИЛИ ЛИМИТ ДО 200 ПОСТОВ
             const messages = await client.getMessages(channel, { limit: 200 });
             
             for (const msg of messages) {
                 if (!msg.text || msg.text.length < 15) continue; 
                 
-                // Проверяем дубли по ссылке перед отправкой в ИИ (экономия)
                 const link = `https://t.me/${cleanChannel}/${msg.id}`;
                 const { data: existing } = await supabase.from('products').select('id').eq('link', link);
                 if (existing && existing.length > 0) continue; 
@@ -107,7 +113,8 @@ async function startParsing() {
                 await new Promise(r => setTimeout(r, 1000)); 
             }
         } catch (err) {
-            console.log(`Ошибка доступа к каналу ${cleanChannel}`);
+            // ТЕПЕРЬ МЫ ВИДИМ НАСТОЯЩУЮ ПРИЧИНУ ОШИБКИ!
+            console.log(`Ошибка доступа к каналу ${cleanChannel}. Причина: ${err.message}`);
         }
         await new Promise(r => setTimeout(r, 3000)); 
     }
