@@ -23,24 +23,25 @@ async function extractWithAI(postText, channelDescription) {
             messages: [
                 { 
                     role: "system", 
-                    content: `Ты — эксперт-детектив по парсингу Telegram-каналов с женской одеждой. Твоя задача — найти в тексте АРТИКУЛ (модель, номер) и ЦЕНУ.
+                    content: `Ты — эксперт-детектив по парсингу Telegram-каналов. Найди в тексте АРТИКУЛ (модель) и ЦЕНУ.
 
 ПРАВИЛА ПОИСКА АРТИКУЛА:
-1.  **Ключевые слова:** Ищи цифры (и иногда буквы) после слов: «Артикул», «Арт», «Мод», «Модель», «Код», «Номер», «В», «#».
-2.  **Решетка (#):** Если видишь «#123» или «# 123» — артикул «123».
-3.  **Без слов:** Если в начале поста или рядом с названием товара стоит просто набор цифр (например, «Платье 4567»), считай это артикулом.
-4.  **Формат:** Артикул может содержать цифры и английские буквы (например, «A-123»). Не бери размеры (S, M, L, 42, 44) и объемы (ОГ, ОТ, ОС).
+1. Ищи цифры после слов: «Артикул», «Арт», «Мод», «Модель», «Код», «Номер», «В».
+2. Обращай внимание на символы: «#», «№». Если видишь «№2640» или «# 2640» — артикул «2640».
+3. Без слов: Если в начале поста или рядом с названием стоит просто набор цифр (например, «Платье 4567»), считай это артикулом.
+4. Артикул может содержать цифры и английские буквы (например, «A-123»). Не бери размеры (S, M, L, 42, 44).
 
 ПРАВИЛА ПОИСКА ЦЕНЫ:
-1.  Ищи число рядом с символами валют: «грн», «гр», «₴», «$», «usd», «дол».
-2.  Если цен несколько (опт/розница), бери ту, что явно указана как цена товара.
+1. Ищи число рядом с «грн», «гр», «₴», «$», «usd», «дол».
+2. Если цен несколько, бери ту, что указана за товар.
 
 ПРИМЕРЫ:
-- Текст: "Платье вечернее. Мод. 1234. Цена 1500 грн" -> {"article": "1234", "price": "1500 грн"}
-- Текст: "Костюм спортивный #5678. 25$" -> {"article": "5678", "price": "25$"}
-- Текст: "Новая коллекция. Джемпер 890. Размеры 42-44. 800 грн" -> {"article": "890", "price": "800 грн"}
+- "Платье. Мод. 1234. Цена 1500 грн" -> {"article": "1234", "price": "1500 грн"}
+- "Костюм #5678. 25$" -> {"article": "5678", "price": "25$"}
+- "Жакет №2640. 37$" -> {"article": "2640", "price": "37$"}
+- "Джемпер 890. Размеры 42-44. 800 грн" -> {"article": "890", "price": "800 грн"}
 
-Верни ТОЛЬКО JSON строго в формате: {"article": "...", "price": "...", "address": "..."}. Если артикула нет — верни пустую строку.` 
+Верни ТОЛЬКО JSON: {"article": "...", "price": "...", "address": "..."}. Если артикула нет — верни пустую строку.` 
                 },
                 { role: "user", content: `ОПИСАНИЕ КАНАЛА:\n${channelDescription}\n\nТЕКСТ ПОСТА:\n${postText}` }
             ],
@@ -56,7 +57,7 @@ async function extractWithAI(postText, channelDescription) {
 async function startParsing() {
     const client = new TelegramClient(stringSession, apiId, apiHash, { connectionRetries: 5 });
     await client.connect();
-    console.log("✅ Подключились! Начинаем умный сбор...");
+    console.log("✅ Подключились! Начинаем глубокий сбор...");
 
     let channels = [];
     try {
@@ -75,11 +76,17 @@ async function startParsing() {
             channelAbout = fullChannel.fullChat.about || "";
             channelTitle = fullChannel.chats[0].title || cleanChannel;
             
-            const messages = await client.getMessages(channel, { limit: 50 });
+            // УВЕЛИЧИЛИ ЛИМИТ ДО 200 ПОСТОВ
+            const messages = await client.getMessages(channel, { limit: 200 });
             
             for (const msg of messages) {
                 if (!msg.text || msg.text.length < 15) continue; 
                 
+                // Проверяем дубли по ссылке перед отправкой в ИИ (экономия)
+                const link = `https://t.me/${cleanChannel}/${msg.id}`;
+                const { data: existing } = await supabase.from('products').select('id').eq('link', link);
+                if (existing && existing.length > 0) continue; 
+
                 const extractedData = await extractWithAI(msg.text, channelAbout);
                 
                 if (!extractedData || !extractedData.article) continue; 
@@ -89,10 +96,6 @@ async function startParsing() {
 
                 const price = extractedData.price || 'Не указана';
                 const address = extractedData.address || channelTitle;
-                const link = `https://t.me/${cleanChannel}/${msg.id}`;
-
-                const { data: existing } = await supabase.from('products').select('id').eq('link', link);
-                if (existing && existing.length > 0) continue; 
 
                 const { error } = await supabase.from('products').insert([{
                     article, price, address, link, channel_name: channelTitle
