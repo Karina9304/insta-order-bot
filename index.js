@@ -1,4 +1,4 @@
-const { TelegramClient } = require("telegram");
+const { TelegramClient, Api } = require("telegram"); // <-- ВОТ ОНА, ИСПРАВЛЕННАЯ СТРОЧКА
 const { StringSession } = require("telegram/sessions");
 const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
@@ -72,15 +72,7 @@ async function startParsing() {
         let channelTitle = cleanChannel;
 
         try {
-            // Пытаемся получить данные канала
-            let fullChannel;
-            if (channel.includes('+')) {
-                // Если это приватная ссылка-приглашение
-                fullChannel = await client.invoke(new Api.channels.GetFullChannel({ channel: channel }));
-            } else {
-                fullChannel = await client.invoke(new Api.channels.GetFullChannel({ channel: cleanChannel }));
-            }
-            
+            const fullChannel = await client.invoke(new Api.channels.GetFullChannel({ channel: channel }));
             channelAbout = fullChannel.fullChat.about || "";
             channelTitle = fullChannel.chats[0].title || cleanChannel;
             
@@ -113,7 +105,6 @@ async function startParsing() {
                 await new Promise(r => setTimeout(r, 1000)); 
             }
         } catch (err) {
-            // ТЕПЕРЬ МЫ ВИДИМ НАСТОЯЩУЮ ПРИЧИНУ ОШИБКИ!
             console.log(`Ошибка доступа к каналу ${cleanChannel}. Причина: ${err.message}`);
         }
         await new Promise(r => setTimeout(r, 3000)); 
